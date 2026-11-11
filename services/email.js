@@ -16,7 +16,12 @@ const {
 if (transporter) {
     transporter.verify((error) => {
         if (error) {
-            console.error("SMTP verification failed:", error.message);
+            console.error("SMTP verification failed", {
+                name: error.name,
+                code: error.code,
+                command: error.command,
+                responseCode: error.responseCode
+            });
         } else {
             console.log("SMTP server is ready for email.");
         }

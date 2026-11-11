@@ -234,7 +234,7 @@ $("#af").onsubmit=async e=>{e.preventDefault();$("#ae").textContent="";
   }
   if(mode==="forgot"){
    await api("/forgot-password",{method:"POST",body:JSON.stringify({email:$("#ae1").value})});
-   setMode("forgot","If an account exists for this email, a reset link is on its way.");return;
+   setMode("forgot","If an account exists for this email, a reset link is on its way. Check your inbox and spam folder.");return;
   }
   if(mode==="verify"){
    await api("/resend-verification",{method:"POST",body:JSON.stringify({email:$("#ae1").value})});
@@ -247,7 +247,12 @@ $("#af").onsubmit=async e=>{e.preventDefault();$("#ae").textContent="";
   const j=await api("/login",{method:"POST",body:JSON.stringify({email:$("#ae1").value,password:$("#ap").value})});
   token=j.token;try{localStorage.setItem(K+"tok",token)}catch(x){}await boot();
  }
- catch(er){$("#ae").textContent=er.message}};
+ catch(er){
+  if(mode==="forgot"){
+   const messages={400:"Enter a valid email address.",429:"Too many requests. Please wait a few minutes and try again.",500:"We couldn’t process the request right now. Please try again shortly.",503:"Password reset email is temporarily unavailable. Please try again later."};
+   $("#ae").textContent=messages[er.status]||"We couldn’t send the request. Check your connection and try again.";
+  }else $("#ae").textContent=er.message;
+ }};
 setMode("login");
 boot();
 </script></body></html>

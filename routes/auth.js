@@ -82,33 +82,42 @@ router.post("/resend-verification", authLimit, wrap(async (req, res) => {
 
 router.post("/forgot-password", authLimit, wrap(async (req, res) => {
   const { email } = req.body || {};
-  if (!isStr(email, 120) || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: "Enter a valid email address" });
+  if (!isStr(email, 120) || !/^\S+@\S+\.\S+$/.test(email.trim())) return res.status(400).json({ error: "Enter a valid email address" });
   if (!mailReady) return res.status(503).json({ error: "Email delivery is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS." });
-  const user = await User.findOne({ email: email.toLowerCase() });
-  if (!user) return res.json({ ok: true });
-  const resetToken = makeToken();
-  const now = new Date();
-  const resetTokens = (user.passwordResetTokens || [])
-    .filter(token => token.expiresAt > now);
-  if (user.passwordResetTokenHash && user.passwordResetExpiresAt > now) {
-    resetTokens.push({
-      tokenHash: user.passwordResetTokenHash,
-      expiresAt: user.passwordResetExpiresAt
-    });
+
+  let user;
+  try {
+    user = await User.findOne({ email: email.trim().toLowerCase() });
+  } catch (error) {
+    console.error("Forgot-password database lookup failed", { name: error.name, code: error.code });
+    throw error;
   }
-  resetTokens.push({
-    tokenHash: tokenHash(resetToken),
-    expiresAt: new Date(now.getTime() + 60 * 60 * 1000)
-  });
-  user.passwordResetTokens = resetTokens.slice(-5);
-  user.passwordResetTokenHash = undefined;
-  user.passwordResetExpiresAt = undefined;
-  await user.save();
+  if (!user) return res.json({ ok: true });
+
+  const resetToken = makeToken();
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  user.passwordResetTokenHash = tokenHash(resetToken);
+  user.passwordResetExpiresAt = expiresAt;
+  // Invalidate any older reset links, including links created by older app versions.
+  user.passwordResetTokens = [];
+  try {
+    await user.save();
+  } catch (error) {
+    console.error("Forgot-password token storage failed", { name: error.name, code: error.code });
+    throw error;
+  }
+
   try {
     await sendLink(user.email, "Reset your GATE Command Center password", "Reset your password", `${appUrl}/?reset=${resetToken}`);
   } catch (error) {
-    console.error("Password reset email delivery failed:", error.message);
-    return res.status(503).json({ error: "The password reset email could not be sent. Please try again later." });
+    console.error("Password reset email delivery failed", {
+      name: error.name,
+      code: error.code,
+      command: error.command,
+      responseCode: error.responseCode
+    });
+    // Keep the response indistinguishable from an unknown address.
+    return res.json({ ok: true });
   }
   res.json({ ok: true });
 }));
@@ -118,7 +127,8 @@ router.post("/reset-password", authLimit, wrap(async (req, res) => {
   if (!isStr(token, 200) || !isStr(password, 100) || password.length < 8) return res.status(400).json({ error: "Use a valid reset link and a password of at least 8 characters" });
   const now = new Date();
   const hashedToken = tokenHash(token);
-  const user = await User.findOne({
+  const passwordHash = await bcrypt.hash(password, 12);
+  const user = await User.findOneAndUpdate({
     $or: [
       {
         passwordResetTokenHash: hashedToken,
@@ -133,13 +143,11 @@ router.post("/reset-password", authLimit, wrap(async (req, res) => {
         }
       }
     ]
-  });
+  }, {
+    $set: { passwordHash, passwordResetTokens: [] },
+    $unset: { passwordResetTokenHash: 1, passwordResetExpiresAt: 1 }
+  }, { new: true, runValidators: true });
   if (!user) return res.status(400).json({ error: "Invalid or expired password reset link" });
-  user.passwordHash = await bcrypt.hash(password, 12);
-  user.passwordResetTokenHash = undefined;
-  user.passwordResetExpiresAt = undefined;
-  user.passwordResetTokens = [];
-  await user.save();
   res.json({ ok: true });
 }));
 

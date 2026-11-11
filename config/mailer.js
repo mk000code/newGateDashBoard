@@ -9,7 +9,8 @@ const {
 } = require("./settings");
 
 const mailReady = Boolean(
-    SMTP_HOST && SMTP_USER && SMTP_PASS
+    SMTP_HOST && SMTP_USER && SMTP_PASS && Number.isInteger(Number(SMTP_PORT)) &&
+    Number(SMTP_PORT) >= 1 && Number(SMTP_PORT) <= 65535
 );
 
 const port = Number(SMTP_PORT || 587);
