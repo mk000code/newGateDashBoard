@@ -220,7 +220,7 @@ async function boot(){
  }
  if(!token){au.style.display="flex";return}
  try{const[u,p]=await Promise.all([api("/me"),api("/progress")]);user=u.user;if(p.data)st=Object.assign(st,p.data);au.style.display="none";$("#un").textContent=user.name;render(1);badge("\u2601 Synced")}
- catch(e){token=null;au.style.display="flex"}
+ catch(e){if(e.status===401){token=null;try{localStorage.removeItem(K+"tok")}catch(x){}}setMode("login",e.message||"Could not load your dashboard. Please sign in again.");au.style.display="flex"}
 }
 $("#am").onclick=e=>{e.preventDefault();setMode(mode==="login"?"register":"login")};
 $("#aforgot").onclick=e=>{e.preventDefault();setMode("forgot")};
